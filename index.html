@@ -628,7 +628,7 @@ input[type=text].input-valid {
   margin: 12px 0 0;
 }
 
-/* Green Self-Declaration Card (Screenshot Style) */
+/* Green Self-Declaration Card */
 .declaration-box {
   display: flex;
   align-items: flex-start;
@@ -804,12 +804,13 @@ footer strong {
     <div class="card-body">
       <div class="intro">
         <h2>Restricted Portal Access</h2>
-        <p>Enter the access code issued by the store admin to open the BGMI UC order portal.</p>
+        <p>Enter the English word access code issued by the store admin to open the BGMI UC order portal.</p>
       </div>
       <form id="loginForm" novalidate>
         <div class="field" style="margin-top:0">
           <label for="bookingCodeInput">ACCESS / BOOKING CODE <span class="required">*</span></label>
-          <input id="bookingCodeInput" type="text" autocomplete="off" spellcheck="false" placeholder="Enter your access code" required>
+          <input id="bookingCodeInput" type="text" pattern="[A-Za-z]+" autocomplete="off" spellcheck="false" placeholder="Enter English word access code (e.g. DJSHOP)" required>
+          <div class="hint">Only English alphabet words (A–Z) are allowed. Numbers are not accepted.</div>
         </div>
         <div id="loginAlert" class="alert-msg" role="status" aria-live="polite"></div>
         <button class="btn" id="verifyLoginBtn" type="submit">VERIFY CODE &amp; OPEN PORTAL →</button>
@@ -982,6 +983,7 @@ const SHEETS_WEB_APP_URL = "PASTE_YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE";
 
 const $ = id => document.getElementById(id);
 const cards = ["selectCard", "paymentCard", "statusCard"];
+const ENGLISH_WORD_ONLY = /^[A-Za-z]+$/;
 let selected = null;
 
 /* Utility: Show formatted inline alerts */
@@ -1045,6 +1047,7 @@ function lockPortal() {
   $("loginCard").classList.remove("hidden");
   $("logoutBtn").classList.add("hidden");
   $("bookingCodeInput").value = "";
+  $("bookingCodeInput").classList.remove("input-error");
   setAlert($("loginAlert"), "");
 }
 
@@ -1064,13 +1067,35 @@ function showStep(which, scroll = true) {
   }
 }
 
+/* Block numbers and non-English characters in Access/Booking Code input */
+$("bookingCodeInput").addEventListener("input", (e) => {
+  const raw = e.target.value;
+  const cleaned = raw.replace(/[^A-Za-z]/g, "");
+  if (raw !== cleaned) {
+    e.target.value = cleaned;
+    $("bookingCodeInput").classList.add("input-error");
+    setAlert($("loginAlert"), "Numbers are not allowed. Enter only English letters (A-Z).", "error");
+  } else {
+    $("bookingCodeInput").classList.remove("input-error");
+    setAlert($("loginAlert"), "");
+  }
+});
+
 /* Login Form Submission */
 $("loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const enteredCode = $("bookingCodeInput").value.trim();
 
   if (!enteredCode) {
-    setAlert($("loginAlert"), "Please enter your access code first.", "error");
+    $("bookingCodeInput").classList.add("input-error");
+    setAlert($("loginAlert"), "Please enter your English word access code first.", "error");
+    $("bookingCodeInput").focus();
+    return;
+  }
+
+  if (!ENGLISH_WORD_ONLY.test(enteredCode)) {
+    $("bookingCodeInput").classList.add("input-error");
+    setAlert($("loginAlert"), "Numbers or symbols are not accepted. Use only English alphabet words (A-Z).", "error");
     $("bookingCodeInput").focus();
     return;
   }
@@ -1089,18 +1114,27 @@ $("loginForm").addEventListener("submit", async (event) => {
 
     for (let i = 0; i < rows.length; i++) {
       for (let j = 0; j < rows[i].length; j++) {
-        const cellVal = (rows[i][j] || "").trim().toLowerCase();
-        if (cellVal && cellVal !== "code" && cellVal !== "access code" && cellVal !== "booking code") {
+        const rawCell = (rows[i][j] || "").trim();
+        const cellVal = rawCell.toLowerCase();
+        if (
+          rawCell &&
+          ENGLISH_WORD_ONLY.test(rawCell) &&
+          cellVal !== "code" &&
+          cellVal !== "access code" &&
+          cellVal !== "booking code"
+        ) {
           validCodes.add(cellVal);
         }
       }
     }
 
     if (validCodes.has(enteredCode.toLowerCase())) {
+      $("bookingCodeInput").classList.remove("input-error");
       setAlert($("loginAlert"), "Access code verified! Opening portal...", "ok");
       setTimeout(() => unlockPortal(enteredCode), 250);
     } else {
-      setAlert($("loginAlert"), "Invalid access code. Please check your code with the store admin.", "error");
+      $("bookingCodeInput").classList.add("input-error");
+      setAlert($("loginAlert"), "Invalid access code. Only valid English word codes are accepted.", "error");
       $("loginCard").classList.remove("shake");
       void $("loginCard").offsetWidth;
       $("loginCard").classList.add("shake");
@@ -1115,9 +1149,13 @@ $("loginForm").addEventListener("submit", async (event) => {
 
 $("logoutBtn").addEventListener("click", lockPortal);
 
-/* Auto-unlock if code exists in current session */
+/* Auto-unlock only if remembered code is a valid English word (no numbers) */
 const rememberedCode = sessionStorage.getItem("bgmi_uc_verified_code");
-if (rememberedCode) unlockPortal(rememberedCode);
+if (rememberedCode && ENGLISH_WORD_ONLY.test(rememberedCode)) {
+  unlockPortal(rememberedCode);
+} else {
+  sessionStorage.removeItem("bgmi_uc_verified_code");
+}
 
 /* Step 1: Package Selection & Player ID Live Input Filtering */
 function updateContinueButtonState() {
